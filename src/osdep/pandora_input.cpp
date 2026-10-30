@@ -31,6 +31,9 @@ struct pidata {
   uae_s16 button_keycode[MAX_BUTTONS];
     
 	bool analogstick;
+#ifdef ANDROIDSDL
+  SDL_Joystick *android_gamepad;
+#endif
 };
 
 static struct pidata pi_mouse[MAX_INPUT_DEVICES];
@@ -197,6 +200,9 @@ static void init_joy_widgets(struct pidata *pid, int numaxles, int numbuttons)
 
 static void pi_dev_free (struct pidata *pid)
 {
+#ifdef ANDROIDSDL
+  if (pid->android_gamepad) SDL_JoystickClose(pid->android_gamepad);
+#endif
 	for (int i = 0; i < MAX_AXIS; i++) {
 	  if(pid->axisname[i])
 	    xfree(pid->axisname[i]);
@@ -232,6 +238,19 @@ void input_closeall(void)
   pi_initialized = false;
 }
 
+#ifdef ANDROIDSDL
+static SDL_Joystick *open_android_gamepad(int number)
+{
+  SDL_InitSubSystem(SDL_INIT_JOYSTICK);
+  char wanted[32];
+  snprintf(wanted, sizeof(wanted), "Gamepad %d", number);
+  for (int index = 0; index < SDL_NumJoysticks(); ++index) {
+    const char *name = SDL_JoystickName(index);
+    if (name && strcmp(name, wanted) == 0) return SDL_JoystickOpen(index);
+  }
+  return NULL;
+}
+#endif
 bool input_initialize_alldevices (void)
 {
   struct pidata *pid;
@@ -264,13 +283,28 @@ bool input_initialize_alldevices (void)
 
   pid = pi_joystick;
   pid->type = PID_JOYSTICK;
+#ifdef ANDROIDSDL
+  pid->name = my_strdup(_T("Gamepad 1 / touch"));
+  pid->android_gamepad = open_android_gamepad(1);
+#else
   pid->name = my_strdup(_T("dPad as joystick"));
+#endif
   pid->configname = my_strdup (_T("JOY0"));
   pid->eventinput = 0;
   init_joy_widgets(pid, 2, 7);
 	pid++;
 	num_joystick++;
   
+#ifdef ANDROIDSDL
+  pid->type = PID_JOYSTICK;
+  pid->name = my_strdup(_T("Gamepad 2"));
+  pid->configname = my_strdup(_T("JOY1"));
+  pid->eventinput = 0;
+  pid->android_gamepad = open_android_gamepad(2);
+  init_joy_widgets(pid, 2, 7);
+  pid++;
+  num_joystick++;
+#endif
   pid = pi_keyboard;
   pid->type = PID_KEYBOARD;
   pid->name = my_strdup(_T("Keyboard"));
@@ -643,6 +677,43 @@ static TCHAR *get_joystick_uniquename (int joy)
 static int dpad_mouse_button[2];
 #endif
 
+#ifdef ANDROIDSDL
+static void read_joystick (void)
+{
+  const Uint8 *keys = SDL_GetKeyState(NULL);
+  SDL_JoystickUpdate();
+  for (int i = 0; i < num_joystick; ++i) {
+    struct pidata *pid = &pi_joystick[i];
+    if (!pid->acquired) continue;
+    int x = 0, y = 0;
+    if (i == 0 && changed_prefs.onScreen_dpad_mode == 0 && !joystick_key(keys, SDLK_RCTRL)) {
+      x = joystick_key(keys, SDLK_LEFT) ? -32767 : joystick_key(keys, SDLK_RIGHT) ? 32767 : 0;
+      y = joystick_key(keys, SDLK_UP) ? -32767 : joystick_key(keys, SDLK_DOWN) ? 32767 : 0;
+    }
+    if (pid->android_gamepad) {
+      int px = SDL_JoystickGetAxis(pid->android_gamepad, 0);
+      int py = SDL_JoystickGetAxis(pid->android_gamepad, 1);
+      if (abs(px) > 8000) x = px;
+      if (abs(py) > 8000) y = py;
+    }
+    setjoystickstate(i, 0, x, 32767);
+    setjoystickstate(i, 1, y, 32767);
+    for (int j = 0; j < pid->buttons; ++j) {
+      int state = i == 0 ? joystick_key(keys, pid->button_keycode[j]) : 0;
+      if (i == 0 && j < 2) {
+        int as_mouse = changed_prefs.mouseButtonsAB ? state : 0;
+        if (as_mouse != dpad_mouse_button[j] && get_sdlmouse() >= 0) {
+          dpad_mouse_button[j] = as_mouse;
+          setmousebuttonstate(get_sdlmouse(), j, as_mouse);
+        }
+        if (changed_prefs.mouseButtonsAB) state = 0;
+      }
+      if (pid->android_gamepad) state |= SDL_JoystickGetButton(pid->android_gamepad, j) != 0;
+      setjoybuttonstate(i, j, state);
+    }
+  }
+}
+#else
 static void read_joystick (void)
 {
   int i, j;
@@ -685,6 +756,8 @@ static void read_joystick (void)
     }
 	}
 }
+
+#endif
 
 static int init_joystick (void)
 {
@@ -840,10 +913,14 @@ int input_get_default_joystick (struct uae_input_device *uid, int i, int port, i
 			setid (uid, i, ID_BUTTON_OFFSET + 6, 0, port, port ? INPUTEVENT_JOY2_CD32_PLAY :  INPUTEVENT_JOY1_CD32_PLAY, gp);
 	}
 
+#ifdef ANDROIDSDL
+  return i >= 0 && i < num_joystick;
+#else
   if (i == 0) {
     return 1;
   }
   return 0;
+#endif
 }
 
 int input_get_default_keyboard (int i)

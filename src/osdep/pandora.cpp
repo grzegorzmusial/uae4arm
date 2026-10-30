@@ -126,6 +126,11 @@ void target_default_options (struct uae_prefs *p, int type)
 	p->mouseWithDpadSpeed = 1;
 	p->mouseWithDpadAccel = 0;
 	p->mouseButtonsAB = 0;
+  // First pad/touch: Amiga joystick port. Second pad: Amiga mouse port.
+  p->jports[1].id = JSEM_JOYS;
+  p->jports[1].mode = JSEM_MODE_JOYSTICK;
+  p->jports[0].id = JSEM_JOYS + 1;
+  p->jports[0].mode = JSEM_MODE_JOYSTICK;
 #endif
 	p->midi_serial = false;
 	

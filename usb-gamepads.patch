@@ -1,0 +1,78 @@
+diff --git a/project/jni/sdl-1.2/src/video/android/SDL_androidinput.c b/project/jni/sdl-1.2/src/video/android/SDL_androidinput.c
+--- a/project/jni/sdl-1.2/src/video/android/SDL_androidinput.c
++++ b/project/jni/sdl-1.2/src/video/android/SDL_androidinput.c
+@@ -992,6 +992,51 @@
+ 	SDL_ANDROID_MainThreadPushMouseMotion(x, y);
+ };
+ 
++/* Preserve physical-controller identity; button 4 uses touchscreen button 3's Fire action. */
++static int uae4arm_pad_directions[SDL_ANDROID_MAX_GAMEPADS][4];
++static float uae4arm_pad_analog[SDL_ANDROID_MAX_GAMEPADS][2];
++static void uae4arm_pad_axes(int pad)
++{
++    int *d = uae4arm_pad_directions[pad];
++    float x = d[2] ? -1.0f : d[3] ? 1.0f : uae4arm_pad_analog[pad][0];
++    float y = d[0] ? -1.0f : d[1] ? 1.0f : uae4arm_pad_analog[pad][1];
++    SDL_ANDROID_MainThreadPushJoystickAxis(JOY_GAMEPAD1 + pad, 0, NORMALIZE_FLOAT_32767(x));
++    SDL_ANDROID_MainThreadPushJoystickAxis(JOY_GAMEPAD1 + pad, 1, NORMALIZE_FLOAT_32767(y));
++}
++static int uae4arm_pad_key(int key, SDL_scancode translated, int pressed, int gamepadId)
++{
++    int is_button = (key >= KEYCODE_BUTTON_A && key <= KEYCODE_BUTTON_MODE) ||
++                    (key >= KEYCODE_BUTTON_1 && key <= KEYCODE_BUTTON_16);
++    if (gamepadId <= 0 && !is_button) return 0;
++    int pad = gamepadId > 0 ? gamepadId - 1 : 0;
++    if (pad >= SDL_ANDROID_MAX_GAMEPADS || !SDL_ANDROID_CurrentJoysticks[JOY_GAMEPAD1 + pad]) return 0;
++    int button = -1;
++    if (key == KEYCODE_BUTTON_4 || translated == SDL_KEY(PAGEUP)) button = 0;
++    else switch (translated) {
++        case SDL_KEY(PAGEDOWN): button = 0; break;
++        case SDL_KEY(END): button = 1; break;
++        case SDL_KEY(HOME): button = 2; break;
++        case SDL_KEY(F13): button = 4; break;
++        case SDL_KEY(RCTRL): button = 5; break;
++        case SDL_KEY(LALT): button = 6; break;
++    }
++    if (button >= 0) {
++        SDL_ANDROID_MainThreadPushJoystickButton(JOY_GAMEPAD1 + pad, button, pressed ? SDL_PRESSED : SDL_RELEASED);
++        return 1;
++    }
++    int direction = -1;
++    switch (translated) {
++        case SDL_KEY(UP): direction = 0; break;
++        case SDL_KEY(DOWN): direction = 1; break;
++        case SDL_KEY(LEFT): direction = 2; break;
++        case SDL_KEY(RIGHT): direction = 3; break;
++    }
++    if (direction < 0) return 0;
++    uae4arm_pad_directions[pad][direction] = pressed != 0;
++    uae4arm_pad_axes(pad);
++    return 1;
++}
++
+ JNIEXPORT jint JNICALL
+ JAVA_EXPORT_NAME(DemoGLSurfaceView_nativeKey) ( JNIEnv*  env, jobject thiz, jint key, jint action, jint unicode, jint gamepadId )
+ {
+@@ -1018,6 +1063,8 @@
+ 	}
+ 
+ 	keycode = TranslateKeyGamepad(key, gamepadId);
++	if (uae4arm_pad_key(key, keycode, action, gamepadId))
++		return 1;
+ 	//__android_log_print(ANDROID_LOG_INFO, "libSDL","nativeKey %d action %d translated %d unicode %d unshifted %d", key, action, keycode, unicode, unshifted);
+ 
+ 	if( (int)keycode == SDLK_NO_REMAP || (keycode == SDLK_UNKNOWN && unicode == 0) )
+@@ -1494,6 +1541,13 @@
+ 		gamepadId = 1;
+ 
+ 	gamepadId --;
++	/* Poll each physical pad separately; do not merge it into the touch keyboard. */
++	if (SDL_ANDROID_CurrentJoysticks[JOY_GAMEPAD1 + gamepadId]) {
++		uae4arm_pad_analog[gamepadId][0] = fabsf(dpadx) > 0.5f ? dpadx : stick1x;
++		uae4arm_pad_analog[gamepadId][1] = fabsf(dpady) > 0.5f ? dpady : stick1y;
++		uae4arm_pad_axes(gamepadId);
++		return;
++	}
+ 
+ 	// Translate analog dpad values to keypresses
+ 	if( dpady < -0.5f )
