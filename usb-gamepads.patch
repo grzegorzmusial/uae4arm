@@ -76,3 +76,11 @@ diff --git a/project/jni/sdl-1.2/src/video/android/SDL_androidinput.c b/project/
  
  	// Translate analog dpad values to keypresses
  	if( dpady < -0.5f )
+@@ -1717,6 +1771,7 @@
+ 	if( joystick->index >= JOY_GAMEPAD1 && joystick->index <= JOY_GAMEPAD4 )
+ 	{
+ 		joystick->naxes = 8; // Two analog stick + two trigger buttons + Ouya touchpad
++		joystick->nbuttons = 7; // Independent Fire and controller buttons for each USB pad
+ 	}
+ 	SDL_ANDROID_CurrentJoysticks[joystick->index] = joystick;
+ 	//__android_log_print(ANDROID_LOG_INFO, "libSDL", "Opened joystick %d axes %d buttons %d balls %d", joystick->index, joystick->naxes, joystick->nbuttons, joystick->nballs);
