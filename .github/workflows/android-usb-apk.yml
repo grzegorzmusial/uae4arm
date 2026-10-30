@@ -32,6 +32,7 @@ jobs:
         run: |
           git clone --no-checkout https://github.com/pelya/commandergenius androidsdl
           git -C androidsdl checkout e0d402e50
+          git -C androidsdl submodule update --init --recursive --depth 1 project/jni/sdl2 project/jni/sdl2_image project/jni/sdl2_ttf project/jni/sdl2_mixer
           mkdir -p androidsdl/project/jni/application/uae4arm
           cp -a source/. androidsdl/project/jni/application/uae4arm/
           git clone https://github.com/FrodeSolheim/capsimg androidsdl/project/jni/capsimage
